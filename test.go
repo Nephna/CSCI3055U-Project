@@ -1,7 +1,18 @@
 package main
 
-import "CSCI3055U-Project/PrintString"
+import (
+	"fmt"
+)
+
+type thing struct {
+	aNum int
+
+	func something () (int) {
+		return aNum
+	}
+}
 
 func main () {
-	PrintString.PrintString("Hello")
+	aThing := thing{10}
+	fmt.Println(aThing.something())
 }
