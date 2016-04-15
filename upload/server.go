@@ -12,14 +12,14 @@ import (
 
 const (
 	LOGIN = "/login"
-	INTERNAL = "/internal"
+	MAIN = "/main"
 	UPLOAD = "/upload"
 	LOGOUT = "/logout"
 	SLASH = "/"
 	BLANK = ""
 
 	LOGIN_HTML = "login.html"
-	INTERNAL_HTML = "internal.html"
+	MAIN_HTML = "main.html"
 	UPLOAD_HTML = "upload.html"
 	LOGOUT_HTML = "logout.html"
 
@@ -46,9 +46,21 @@ func startSession (writer http.ResponseWriter, username string) {
 	cookie := &http.Cookie {
 		Name: "username",
 		Value: username,
+		Expires: time.Now().Add(3 * time.Minute),
 		Path: SLASH,
 	}
 	http.SetCookie(writer, cookie)
+}
+
+// refreshes a currently active session or redirects to login page if the
+// session has expired
+func refreshSession (writer http.ResponseWriter, request *http.Request) {
+	if (validSession(request)) {
+		name := getName(request)
+		startSession(writer, name)
+		return
+	}
+	http.Redirect(writer, request, LOGIN, 301)
 }
 
 // ends the session by clearing the cookie
@@ -68,10 +80,8 @@ func endSession (writer http.ResponseWriter) {
 func validSession (request *http.Request) (bool) {
 	cookie, _ := request.Cookie("username")
 	if (cookie == nil) {
-		fmt.Println("Invalid session")
 		return false
 	}
-	fmt.Println(cookie.Value)
 	return true
 }
 
@@ -82,7 +92,13 @@ func getName (request *http.Request) (username string) {
 	return cookie.Value
 }
 
+// parses textbox input, validates it, and if valid, starts a new session for the user
 func login (writer http.ResponseWriter, request *http.Request) {
+	// already a valid session present, redirect to main page
+	if (validSession(request)) {
+		http.Redirect(writer, request, MAIN, 301)
+	}
+
 	if (request.Method == "GET") {
 		t, _ := template.ParseFiles(LOGIN_HTML)
 		t.Execute(writer, nil)
@@ -93,7 +109,7 @@ func login (writer http.ResponseWriter, request *http.Request) {
 
 		if valid := isValid(name, pass);(valid) {
 			startSession(writer, name) // start a new session
-			http.Redirect(writer, request, UPLOAD, 301)
+			http.Redirect(writer, request, MAIN, 301)
 		} else {
 			http.Redirect(writer, request, LOGIN, 301) // invalid login, try again
 		}
@@ -101,26 +117,23 @@ func login (writer http.ResponseWriter, request *http.Request) {
 }
 
 func internal (writer http.ResponseWriter, request *http.Request) {
-	if (!validSession(request)) {
-		http.Redirect(writer, request, LOGIN, 301)
-	}
+	refreshSession(writer, request)
 
 	if (request.Method == "GET") {
-		t, _ := template.ParseFiles(INTERNAL_HTML)
+		t, _ := template.ParseFiles(MAIN_HTML)
 		t.Execute(writer, nil)
 	}
 }
 
 // logs user out of site
 func logout (writer http.ResponseWriter, request *http.Request) {
-	endSession(writer)
+	endSession(writer) // remove cookie
 	http.Redirect(writer, request, LOGIN, 301)
 }
 
- func upload (writer http.ResponseWriter, request *http.Request) {
- 	if (!validSession(request)) {
- 		http.Redirect(writer, request, LOGIN, 301)
- 	}
+
+func upload (writer http.ResponseWriter, request *http.Request) {
+ 	refreshSession(writer, request)
 
  	if (request.Method == "GET") {
  		t, _ := template.ParseFiles(UPLOAD_HTML)
@@ -143,27 +156,34 @@ func logout (writer http.ResponseWriter, request *http.Request) {
 
 	 	destName := dir + header.Filename
 
-	 	out, err := os.Create(destName)
+	 	output, err := os.Create(destName)
 	 	checkError(err)
-	 	defer out.Close()
+	 	defer output.Close()
 
 	 	// write the content from POST to the file
-	 	_, err = io.Copy(out, file)
+	 	_, err = io.Copy(output, file)
 	 	checkError(err)
 
-	 	fmt.Fprintf(writer, "File uploaded successfully : ")
-	 	fmt.Fprintf(writer, header.Filename)
+	 	// file uploaded successfully, redirect to main page
+	 	http.Redirect(writer, request, MAIN, 301)
 	 }
  }
 
 func main () {
-	//http.HandleFunc("/", login)
+	if (len(os.Args) != 2) {
+		fmt.Println("Error: incorrect amount of arguments supplied\nUsage: ", os.Args[0], "<port>")
+		os.Exit(0)
+	}
+
+	// set url function handlers
 	http.HandleFunc(LOGIN, login)
-	http.HandleFunc(INTERNAL, internal)
+	http.HandleFunc(MAIN, internal)
 	http.HandleFunc(LOGOUT, logout)
 	http.HandleFunc(UPLOAD, upload)
 
-	err := http.ListenAndServe(":9090", nil) // begin listening on port 9090
+	port := ":" + os.Args[1] // get port from user
+
+	err := http.ListenAndServe(port, nil) // begin listening on port
 	checkError(err)
 }
 
