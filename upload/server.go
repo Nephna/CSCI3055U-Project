@@ -10,9 +10,32 @@ import (
 	"html/template"
 )
 
+const (
+	LOGIN = "/login"
+	INTERNAL = "/internal"
+	UPLOAD = "/upload"
+	LOGOUT = "/logout"
+	SLASH = "/"
+	BLANK = ""
+
+	LOGIN_HTML = "login.html"
+	INTERNAL_HTML = "internal.html"
+	UPLOAD_HTML = "upload.html"
+	LOGOUT_HTML = "logout.html"
+
+	FILE_LOCATION = "." + string(os.PathSeparator) + "users" + string(os.PathSeparator)
+)
+
 // validates name and password
 func isValid (name, pass string) (bool) {
 	if (name != "" && pass != "") {
+		return true
+	}
+	return false
+}
+
+func isFile (name string) (bool) {
+	if (name != "") {
 		return true
 	}
 	return false
@@ -23,7 +46,7 @@ func startSession (writer http.ResponseWriter, username string) {
 	cookie := &http.Cookie {
 		Name: "username",
 		Value: username,
-		Path: "/internal",
+		Path: SLASH,
 	}
 	http.SetCookie(writer, cookie)
 }
@@ -34,7 +57,7 @@ func endSession (writer http.ResponseWriter) {
 	cookie := &http.Cookie {
 		Name: "username",
 		Value: "",
-		Path: "/",
+		Path: BLANK,
 		Expires: time.Now().Add(-24 * time.Hour),
 		MaxAge: -1,
 	}
@@ -60,62 +83,68 @@ func getName (request *http.Request) (username string) {
 }
 
 func login (writer http.ResponseWriter, request *http.Request) {
-	fmt.Println("Login:")
 	if (request.Method == "GET") {
-		t, _ := template.ParseFiles("login.html")
-		fmt.Println("GET")
+		t, _ := template.ParseFiles(LOGIN_HTML)
 		t.Execute(writer, nil)
 	} else {
-		fmt.Println("POST")
 		request.ParseForm()
 		name := request.FormValue("username")
 		pass := request.FormValue("password")
 
 		if valid := isValid(name, pass);(valid) {
 			startSession(writer, name) // start a new session
-			http.Redirect(writer, request, "/upload", 301)
+			http.Redirect(writer, request, UPLOAD, 301)
 		} else {
-			http.Redirect(writer, request, "/login", 301) // invalid login, try again
+			http.Redirect(writer, request, LOGIN, 301) // invalid login, try again
 		}
 	}
 }
 
 func internal (writer http.ResponseWriter, request *http.Request) {
-	fmt.Println("Internal:")
 	if (!validSession(request)) {
-		http.Redirect(writer, request, "/login", 301)
-		return
+		http.Redirect(writer, request, LOGIN, 301)
 	}
 
 	if (request.Method == "GET") {
-		fmt.Println("GET")
-		t, _ := template.ParseFiles("internal.html")
+		t, _ := template.ParseFiles(INTERNAL_HTML)
 		t.Execute(writer, nil)
 	}
 }
 
 // logs user out of site
 func logout (writer http.ResponseWriter, request *http.Request) {
-	fmt.Println("Logout:")
-	validSession(request)
 	endSession(writer)
-	http.Redirect(writer, request, "/login", 301)
+	http.Redirect(writer, request, LOGIN, 301)
 }
 
  func upload (writer http.ResponseWriter, request *http.Request) {
+ 	if (!validSession(request)) {
+ 		http.Redirect(writer, request, LOGIN, 301)
+ 	}
+
  	if (request.Method == "GET") {
- 		t, _ := template.ParseFiles("upload.html")
+ 		t, _ := template.ParseFiles(UPLOAD_HTML)
  		t.Execute(writer, nil)
  	} else {
-	 	// the FormFile function takes in the POST input id file
+	 	// get file name from data in form
 	 	file, header, err := request.FormFile("file")
-	 	checkError(err)
-
+	 	if (err != nil) {
+	 		// file not found, try again
+	 		http.Redirect(writer, request, UPLOAD, 301)
+	 	}
 	 	defer file.Close()
 
-	 	out, err := os.Create("/tmp/uploadedfile")
-	 	checkError(err)
+	 	// get account name
+	 	name := getName(request)
 
+	 	// TODO: error checking and handling
+	 	dir := FILE_LOCATION + name + string(os.PathSeparator)
+	 	err = os.MkdirAll(dir, 0766) // makes a new directory for this user
+
+	 	destName := dir + header.Filename
+
+	 	out, err := os.Create(destName)
+	 	checkError(err)
 	 	defer out.Close()
 
 	 	// write the content from POST to the file
@@ -129,10 +158,10 @@ func logout (writer http.ResponseWriter, request *http.Request) {
 
 func main () {
 	//http.HandleFunc("/", login)
-	http.HandleFunc("/login", login)
-	http.HandleFunc("/internal", internal)
-	http.HandleFunc("/logout", logout)
-	http.HandleFunc("/upload", upload)
+	http.HandleFunc(LOGIN, login)
+	http.HandleFunc(INTERNAL, internal)
+	http.HandleFunc(LOGOUT, logout)
+	http.HandleFunc(UPLOAD, upload)
 
 	err := http.ListenAndServe(":9090", nil) // begin listening on port 9090
 	checkError(err)
