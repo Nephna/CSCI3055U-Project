@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"os"
 	"io"
+	"io/ioutil"
 	"time"
 	"net/http"
+	"net/url"
+	//"bytes"
 	"html/template"
 )
 
@@ -15,6 +18,7 @@ const (
 	MAIN = "/main"
 	UPLOAD = "/upload"
 	LOGOUT = "/logout"
+	DOWNLOAD = "/download"
 	SLASH = "/"
 	BLANK = ""
 
@@ -94,11 +98,6 @@ func getName (request *http.Request) (username string) {
 
 // parses textbox input, validates it, and if valid, starts a new session for the user
 func login (writer http.ResponseWriter, request *http.Request) {
-	// already a valid session present, redirect to main page
-	if (validSession(request)) {
-		http.Redirect(writer, request, MAIN, 301)
-	}
-
 	if (request.Method == "GET") {
 		t, _ := template.ParseFiles(LOGIN_HTML)
 		t.Execute(writer, nil)
@@ -122,6 +121,15 @@ func internal (writer http.ResponseWriter, request *http.Request) {
 	if (request.Method == "GET") {
 		t, _ := template.ParseFiles(MAIN_HTML)
 		t.Execute(writer, nil)
+
+		dir := FILE_LOCATION + getName(request) + string(os.PathSeparator)
+		files, _ := ioutil.ReadDir(dir)
+		dir = dir[2:] // remove leading ./
+		for _, file := range files {
+			download := "<a href=\"" + file.Name() + "?download\">" + file.Name() + "</a>\n"
+			fmt.Fprintf(writer, download)
+		}
+		fmt.Fprintf(writer, "\n")
 	}
 }
 
@@ -169,6 +177,34 @@ func upload (writer http.ResponseWriter, request *http.Request) {
 	 }
  }
 
+ func download (writer http.ResponseWriter, request *http.Request) {
+ 	refreshSession(writer, request)
+
+	query, err := url.ParseQuery(request.URL.RawQuery)
+	checkError(err)
+
+	if (len(query["download"]) > 0) {
+		writer.Header().Set("Content-Type", "application/octet-stream") // set to download file
+
+		location := FILE_LOCATION + getName(request) + request.URL.Path
+		file, err := os.Open(location)
+		defer file.Close()
+		checkError(err)
+
+		array := make([]byte, 32000) // new buffer of size 32k bytes
+		for (true) {
+			n, err := file.Read(array) // read from file
+			writer.Write(array[:n]) // write to client
+
+			if (err == io.EOF) {
+				break
+			} else {
+				checkError(err)
+			}
+		}
+	}
+ }
+
 func main () {
 	if (len(os.Args) != 2) {
 		fmt.Println("Error: incorrect amount of arguments supplied\nUsage: ", os.Args[0], "<port>")
@@ -180,6 +216,7 @@ func main () {
 	http.HandleFunc(MAIN, internal)
 	http.HandleFunc(LOGOUT, logout)
 	http.HandleFunc(UPLOAD, upload)
+	http.HandleFunc(SLASH, download)
 
 	port := ":" + os.Args[1] // get port from user
 
