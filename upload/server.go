@@ -9,7 +9,6 @@ import (
 	"time"
 	"net/http"
 	"net/url"
-	//"bytes"
 	"html/template"
 )
 
@@ -65,6 +64,7 @@ func refreshSession (writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	http.Redirect(writer, request, LOGIN, 301)
+	return
 }
 
 // ends the session by clearing the cookie
@@ -119,17 +119,25 @@ func internal (writer http.ResponseWriter, request *http.Request) {
 	refreshSession(writer, request)
 
 	if (request.Method == "GET") {
-		t, _ := template.ParseFiles(MAIN_HTML)
-		t.Execute(writer, nil)
-
 		dir := FILE_LOCATION + getName(request) + string(os.PathSeparator)
 		files, _ := ioutil.ReadDir(dir)
-		dir = dir[2:] // remove leading ./
+		codeBody := ""
 		for _, file := range files {
-			download := "<a href=\"" + file.Name() + "?download\">" + file.Name() + "</a>\n"
-			fmt.Fprintf(writer, download)
+			codeBody += "<tr><td><a href=\"" + file.Name() + "?download\">" + file.Name() + "</a></td></tr>\n"
 		}
-		fmt.Fprintf(writer, "\n")
+
+		t, _ := template.ParseFiles(MAIN_HTML)
+
+		// anonymous struct to pass in data to teomplate
+		inject := struct {
+			Name string
+			CodeBody template.HTML
+		}{
+			getName(request), // get name
+			template.HTML(codeBody), // convert string to html code
+		}
+		err := t.Execute(writer, inject)
+		checkError(err)
 	}
 }
 
