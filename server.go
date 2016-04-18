@@ -98,11 +98,6 @@ func getName (request *http.Request) (username string) {
 
 // parses textbox input, validates it, and if valid, starts a new session for the user
 func login (writer http.ResponseWriter, request *http.Request) {
-	if (validSession(request)) {
-		http.Redirect(writer, request, MAIN, 301)
-		return
-	}
-
 	if (request.Method == "GET") {
 		t, _ := template.ParseFiles(LOGIN_HTML)
 		t.Execute(writer, nil)
@@ -210,18 +205,18 @@ func upload (writer http.ResponseWriter, request *http.Request) {
  	}
 
  	query := request.URL.Query()
- 	fmt.Println(query)
 
  	if (len(query["remove"]) > 0) {
  		remove(writer, request)
  	} else if (len(query["download"]) > 0) {
  		download(writer, request)
+ 	} else {
+ 		http.Redirect(writer, request, MAIN, 301)
  	}
  }
 
  func download (writer http.ResponseWriter, request *http.Request) {
 	location := FILE_LOCATION + getName(request) + request.URL.Path
-	fmt.Println(location)
 	file, err := os.Open(location)	
 	if (err != nil) {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())
@@ -248,12 +243,11 @@ func upload (writer http.ResponseWriter, request *http.Request) {
 
  func remove (writer http.ResponseWriter, request *http.Request) {
 	location := FILE_LOCATION + getName(request) + request.URL.Path
-	fmt.Println(location)
 	err := os.Remove(location)
 	if (err != nil) {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())
 	}
-	http.Redirect(writer, request, MAIN, 301)
+	http.Redirect(writer, request, MAIN, 302)
  }
 
 func main () {
